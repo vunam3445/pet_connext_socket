@@ -19,17 +19,34 @@ const io = new Server(server, {
 });
 const onlineUsers = new Map(); // userId -> socketId
 
-// Khi client kết nối
+
 io.on("connection", (socket) => {
   console.log("✅ Client connected:", socket.id);
 
+  // khi user báo online
+  socket.on("user_online", (userId) => {
+    onlineUsers.set(userId, socket.id);
+
+    // gửi danh sách mới cho tất cả client
+    io.emit("online_users", Array.from(onlineUsers.keys()));
+  });
+
+  // join phòng chat
   socket.on("join_room", (conversationId) => {
     socket.join(conversationId);
     console.log(`👉 User ${socket.id} joined room ${conversationId}`);
   });
 
+  // khi user disconnect
   socket.on("disconnect", () => {
     console.log("❌ Client disconnected:", socket.id);
+    for (let [uid, sid] of onlineUsers.entries()) {
+      if (sid === socket.id) {
+        onlineUsers.delete(uid);
+        break;
+      }
+    }
+    io.emit("online_users", Array.from(onlineUsers.keys()));
   });
 });
 
@@ -43,25 +60,26 @@ app.post("/broadcast", (req, res) => {
   res.json({ ok: true });
 });
 
-io.on("connection", (socket) => {
-  console.log("✅ Client connected:", socket.id);
+// API này để Laravel gọi sang khi có thông báo mới (Follow, Post, Like...)
+app.post("/broadcast-notification", (req, res) => {
+  const { receiver_id, notification } = req.body;
 
-  socket.on("user_online", (userId) => {
-    onlineUsers.set(userId, socket.id);
+  if (!receiver_id) {
+    return res.status(400).json({ error: "receiver_id required" });
+  }
 
-    // gửi danh sách mới cho tất cả client
-    io.emit("online_users", Array.from(onlineUsers.keys()));
-  });
+  // Lấy socketId từ Map dựa trên userId người nhận
+  const socketId = onlineUsers.get(receiver_id);
 
-  socket.on("disconnect", () => {
-    for (let [uid, sid] of onlineUsers.entries()) {
-      if (sid === socket.id) {
-        onlineUsers.delete(uid);
-        break;
-      }
-    }
-    io.emit("online_users", Array.from(onlineUsers.keys()));
-  });
+  if (socketId) {
+    // Nếu user đang online, gửi sự kiện "new_notification"
+    io.to(socketId).emit("new_notification", notification);
+    console.log(`🔔 Notification sent to User ${receiver_id}`);
+  } else {
+    console.log(`😴 User ${receiver_id} is offline. Skipping real-time emit.`);
+  }
+
+  res.json({ ok: true });
 });
 
 
