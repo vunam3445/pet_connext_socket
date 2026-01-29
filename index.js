@@ -21,7 +21,7 @@ const onlineUsers = new Map(); // userId -> socketId
 
 
 io.on("connection", (socket) => {
-  console.log("✅ Client connected:", socket.id);
+  console.log(" Client connected:", socket.id);
 
   // khi user báo online
   socket.on("user_online", (userId) => {
